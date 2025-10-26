@@ -17,7 +17,7 @@ struct FrameStats {
     var prepareTimeMs: Double = 0.0
 }
 
-class Decoder {
+class Decoder: @unchecked Sendable {
     static let shared = Decoder()
 
     private var session: VTDecompressionSession?

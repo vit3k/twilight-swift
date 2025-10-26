@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.2
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "twilight",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v26)
     ],
     products: [
         .executable(
@@ -18,6 +18,11 @@ let package = Package(
         .package(url: "https://github.com/CoreOffice/XMLCoder.git", from: "0.17.0")
     ],
     targets: [
+        .systemLibrary(
+            name: "CLibOpus",
+            path: "CLibOpus",
+            pkgConfig: "opus"
+        ),
         .target(
             name: "CLibMoonlight",
             path: "CLibMoonlight",
@@ -35,6 +40,7 @@ let package = Package(
             dependencies: [
                 .product(name: "XMLCoder", package: "XMLCoder"),
                 "CLibMoonlight",
+                "CLibOpus",
             ],
             path: "Sources",
             linkerSettings: [

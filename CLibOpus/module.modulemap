@@ -1,0 +1,6 @@
+module CLibOpus {
+    header "/opt/homebrew/include/opus/opus.h"
+    header "/opt/homebrew/include/opus/opus_multistream.h"
+    link "opus"
+    export *
+}

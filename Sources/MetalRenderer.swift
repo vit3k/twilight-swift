@@ -235,6 +235,7 @@ class MetalRenderer {
     private var textNeedsUpdate = true
     private var firstFrame = true
     
+    @MainActor
     init?(width: Int, height: Int, title: String) {
         // Initialize NSApplication - required for window to appear in dock/taskbar
         NSApplication.shared.setActivationPolicy(.regular)
@@ -346,6 +347,7 @@ class MetalRenderer {
         print("Metal renderer created successfully")
     }
     
+    @MainActor
     deinit {
         frameQueue.clear()
         window.close()
@@ -364,6 +366,7 @@ class MetalRenderer {
         frameQueue.push(imageBuffer)
     }
     
+    @MainActor
     func processEvents() -> Bool {
         autoreleasepool {
             // Process all queued frames
@@ -389,6 +392,7 @@ class MetalRenderer {
         }
     }
     
+    @MainActor
     private func renderFrameInternal(_ imageBuffer: CVImageBuffer) {
         autoreleasepool {
             // Lock the pixel buffer

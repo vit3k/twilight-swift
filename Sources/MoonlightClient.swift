@@ -72,6 +72,9 @@ struct DecodeUnit {
 }
 
 class MoonlightClient {
+    // Store callbacks as properties to prevent them from being deallocated
+    private var storedAudioCallbacks: AUDIO_RENDERER_CALLBACKS?
+    
     // Implementation of MoonlightClient
     func startStreaming(launchInfo: LaunchAppInfo, serverInfo: ServerInfo) {
         // Keep arrays alive throughout the function
@@ -119,7 +122,7 @@ class MoonlightClient {
                         streamConfiguration.clientRefreshRateX100 = 60  // Not specified
                         streamConfiguration.colorSpace = COLORSPACE_REC_709  // Default colorspace (Rec 709)
                         streamConfiguration.colorRange = COLOR_RANGE_LIMITED  // Default color range (Limited)
-                        streamConfiguration.encryptionFlags = Int32(bitPattern: ENCFLG_ALL)
+                        streamConfiguration.encryptionFlags = 0  // Disable encryption to debug audio
 
                         var rendererCallbacks = DECODER_RENDERER_CALLBACKS()
                         rendererCallbacks.submitDecodeUnit = { decodeUnit in
@@ -172,14 +175,69 @@ class MoonlightClient {
                             to: ConnListenerLogMessage?.self
                         )
                         var arCallbacks = AUDIO_RENDERER_CALLBACKS()
-                        arCallbacks.decodeAndPlaySample = { sampleBuffer, sampleLength in
-                            //print("test")
-                        }
+        
+                        // Initialize audio decoder with Opus configuration
                         arCallbacks.`init` = { audioConfiguration, opusConfig, context, arFlags in
-                            print("Audio configuration: \(audioConfiguration)")
-                            return 0
-                            // Start audio rendering logic here
+                            guard let opusConfig = opusConfig else {
+                                return -1
+                            }
+                            
+                            let config = opusConfig.pointee
+                            
+                            // Convert mapping array to Swift array
+                            let mappingTuple = config.mapping
+                            let mapping: [UInt8] = [
+                                mappingTuple.0, mappingTuple.1, mappingTuple.2, mappingTuple.3,
+                                mappingTuple.4, mappingTuple.5, mappingTuple.6, mappingTuple.7
+                            ]
+                            
+                            return AudioDecoder.shared.initialize(
+                                sampleRate: config.sampleRate,
+                                channelCount: config.channelCount,
+                                streams: config.streams,
+                                coupledStreams: config.coupledStreams,
+                                samplesPerFrame: config.samplesPerFrame,
+                                mapping: mapping
+                            )
                         }
+                        
+                        // Start audio playback
+                        arCallbacks.start = {
+                            AudioDecoder.shared.start()
+                        }
+                        
+                        // Stop audio playback
+                        arCallbacks.stop = {
+                            AudioDecoder.shared.stop()
+                        }
+                        
+                        // Cleanup audio decoder
+                        arCallbacks.cleanup = {
+                            AudioDecoder.shared.cleanup()
+                        }
+                        
+                        // Decode and play audio samples
+                        arCallbacks.decodeAndPlaySample = { sampleBuffer, sampleLength in
+                            if sampleLength == 0 {
+                                AudioDecoder.shared.decodeAndPlaySample(Data())
+                                return
+                            }
+                            
+                            guard let sampleBuffer = sampleBuffer else {
+                                return
+                            }
+                            
+                            let data = Data(bytes: sampleBuffer, count: Int(sampleLength))
+                            AudioDecoder.shared.decodeAndPlaySample(data)
+                        }
+                        
+                        // Set capabilities to 0 so moonlight uses its decoder thread which handles
+                        // decryption and RTP header stripping before calling our callback
+                        arCallbacks.capabilities = 0
+                        
+                        // Store callbacks to prevent deallocation
+                        self.storedAudioCallbacks = arCallbacks
+                        
                         // Start streaming logic here
                         LiStartConnection(
                             &serverInformation, &streamConfiguration, &clCallbacks, &rendererCallbacks, &arCallbacks, nil, 0, nil, 0)
