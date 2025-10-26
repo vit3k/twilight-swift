@@ -1,0 +1,6 @@
+module CLibMoonlight {
+    header "Limelight.h"
+    header "LogHelpers.h"
+    link "moonlight-common-c"
+    export *
+}
