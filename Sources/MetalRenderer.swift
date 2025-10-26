@@ -3,6 +3,7 @@ import Metal
 import MetalKit
 import QuartzCore
 import CoreVideo
+import CLibMoonlight
 
 
 // MARK: - Metal Shaders
@@ -97,6 +98,10 @@ private class MetalView: NSView {
     }
     
     override var acceptsFirstResponder: Bool {
+        return true
+    }
+    
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         return true
     }
 }
@@ -222,8 +227,14 @@ class MetalRenderer {
     private var textureCache: CVMetalTextureCache?
     private let width: Int
     private let height: Int
-    private var shouldClose = false
+    fileprivate var shouldClose = false
     private let frameQueue = FrameQueue()
+    
+    // Mouse handling
+    private var mouseEventMonitor: Any?
+    private var mouseButtonMonitor: Any?
+    private var scrollEventMonitor: Any?
+    fileprivate var isMouseCaptured = false
     
     // Stats for OSD
     private var currentStats = FrameStats()
@@ -234,6 +245,9 @@ class MetalRenderer {
     private var textVertexBuffer: MTLBuffer?
     private var textNeedsUpdate = true
     private var firstFrame = true
+    
+    // Window delegate
+    private var windowDelegate: WindowDelegateHelper?
     
     @MainActor
     init?(width: Int, height: Int, title: String) {
@@ -280,6 +294,9 @@ class MetalRenderer {
         window.contentView = metalView
         window.makeKeyAndOrderFront(nil)
         window.makeMain()
+        
+        // Make the view first responder to receive mouse events
+        window.makeFirstResponder(metalView)
         
         // Compile shaders
         do {
@@ -344,13 +361,132 @@ class MetalRenderer {
             return nil
         }
         
+        // Set up window delegate to handle window events
+        windowDelegate = WindowDelegateHelper(renderer: self)
+        window.delegate = windowDelegate
+        
         print("Metal renderer created successfully")
     }
     
     @MainActor
     deinit {
+        releaseMouse()
         frameQueue.clear()
         window.close()
+    }
+    
+    // MARK: - Mouse Capture
+    
+    @MainActor
+    func captureMouse() {
+        guard !isMouseCaptured else { return }
+        
+        // Hide cursor
+        NSCursor.hide()
+        
+        // Disassociate mouse and cursor (allows reading mouse deltas without cursor movement)
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(truncating: 0))
+        
+        // Monitor mouse movement
+        mouseEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]) { event in
+            let deltaX = Int16(event.deltaX)
+            let deltaY = Int16(event.deltaY)
+            
+            // Send relative mouse movement to server
+            LiSendMouseMoveEvent(deltaX, deltaY)
+            
+            return event
+        }
+        
+        // Monitor mouse button events
+        mouseButtonMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp]) { event in
+            let action: Int8
+            let button: Int32
+            
+            switch event.type {
+            case .leftMouseDown:
+                action = Int8(BUTTON_ACTION_PRESS)
+                button = BUTTON_LEFT
+            case .leftMouseUp:
+                action = Int8(BUTTON_ACTION_RELEASE)
+                button = BUTTON_LEFT
+            case .rightMouseDown:
+                action = Int8(BUTTON_ACTION_PRESS)
+                button = BUTTON_RIGHT
+            case .rightMouseUp:
+                action = Int8(BUTTON_ACTION_RELEASE)
+                button = BUTTON_RIGHT
+            case .otherMouseDown:
+                action = Int8(BUTTON_ACTION_PRESS)
+                // Map other buttons (middle, X1, X2)
+                button = event.buttonNumber == 2 ? BUTTON_MIDDLE : (event.buttonNumber == 3 ? BUTTON_X1 : BUTTON_X2)
+            case .otherMouseUp:
+                action = Int8(BUTTON_ACTION_RELEASE)
+                button = event.buttonNumber == 2 ? BUTTON_MIDDLE : (event.buttonNumber == 3 ? BUTTON_X1 : BUTTON_X2)
+            default:
+                return event
+            }
+            
+            LiSendMouseButtonEvent(action, button)
+            return event
+        }
+        
+        // Monitor scroll events
+        scrollEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            if event.hasPreciseScrollingDeltas {
+                // High-resolution scrolling (trackpad)
+                LiSendHighResScrollEvent(Int16(event.scrollingDeltaY))
+                
+                // Handle horizontal scroll if non-zero
+                if event.scrollingDeltaX != 0 {
+                    LiSendHighResHScrollEvent(Int16(event.scrollingDeltaX))
+                }
+            } else {
+                // Standard mouse wheel
+                let scrollAmount = Int8(clamping: Int(event.scrollingDeltaY))
+                LiSendScrollEvent(scrollAmount)
+                
+                if event.scrollingDeltaX != 0 {
+                    let hScrollAmount = Int8(clamping: Int(event.scrollingDeltaX))
+                    LiSendHScrollEvent(hScrollAmount)
+                }
+            }
+            
+            return event
+        }
+        
+        isMouseCaptured = true
+        print("Mouse captured - Press ESC to release, ESC again to close")
+    }
+    
+    @MainActor
+    func releaseMouse() {
+        guard isMouseCaptured else { return }
+        
+        // Remove event monitors
+        if let monitor = mouseEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            mouseEventMonitor = nil
+        }
+        
+        if let monitor = mouseButtonMonitor {
+            NSEvent.removeMonitor(monitor)
+            mouseButtonMonitor = nil
+        }
+        
+        if let monitor = scrollEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            scrollEventMonitor = nil
+        }
+        
+        // Re-associate mouse and cursor
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(truncating: 1))
+        
+        // Show cursor
+        NSCursor.unhide()
+        
+        isMouseCaptured = false
+        print("Mouse released")
     }
     
     func setStats(_ stats: FrameStats) {
@@ -378,10 +514,22 @@ class MetalRenderer {
             // Process window events - MUST be called from main thread
             while let event = NSApp.nextEvent(matching: .any, until: nil, inMode: .default, dequeue: true) {
                 if event.type == .keyDown {
-                    // Handle escape key to close window
+                    // Handle escape key to release mouse or close window
                     if event.keyCode == 53 { // ESC key
-                        shouldClose = true
-                        return false
+                        if isMouseCaptured {
+                            releaseMouse()
+                        } else {
+                            shouldClose = true
+                            return false
+                        }
+                    }
+                    // Handle Cmd+M to toggle mouse capture
+                    else if event.keyCode == 46 && event.modifierFlags.contains(.command) { // Cmd+M
+                        if isMouseCaptured {
+                            releaseMouse()
+                        } else {
+                            captureMouse()
+                        }
                     }
                 }
                 
@@ -552,6 +700,31 @@ class MetalRenderer {
             // Present drawable
             commandBuffer.present(drawable)
             commandBuffer.commit()
+        }
+    }
+}
+
+// MARK: - Window Delegate Helper
+
+private class WindowDelegateHelper: NSObject, NSWindowDelegate {
+    weak var renderer: MetalRenderer?
+    
+    init(renderer: MetalRenderer) {
+        self.renderer = renderer
+        super.init()
+    }
+    
+    @MainActor
+    func windowWillClose(_ notification: Notification) {
+        renderer?.releaseMouse()
+        renderer?.shouldClose = true
+    }
+    
+    @MainActor
+    func windowDidResignKey(_ notification: Notification) {
+        // Release mouse when window loses focus
+        if renderer?.isMouseCaptured == true {
+            renderer?.releaseMouse()
         }
     }
 }

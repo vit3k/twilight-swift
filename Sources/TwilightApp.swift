@@ -50,8 +50,11 @@ struct TwilightApp {
             let moonlightClient = MoonlightClient()
             moonlightClient.startStreaming(launchInfo: launchInfo, serverInfo: serverInfo)
             
+            // Capture mouse for gaming (optional - you can also press Cmd+M to toggle)
+            renderer.captureMouse()
+            
             // Run render loop on main thread
-            print("Streaming started. Press ESC to exit.")
+            print("Streaming started. Press ESC to release mouse, ESC again to exit. Cmd+M to toggle mouse capture.")
             while renderer.processEvents() {
                 // Process events continuously
                 // This must be called from the main thread
