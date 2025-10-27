@@ -69,6 +69,8 @@ struct DecodeUnit {
     let frameType: FrameType
     let fullLength: Int32
     let buffers: [DecodeBuffer]
+    let presentationTimeMs: UInt32  // unsigned int in C
+    let receiveTimeMs: UInt64       // uint64_t in C
 }
 
 class MoonlightClient {
@@ -135,6 +137,8 @@ class MoonlightClient {
                             // Access the decode unit data
                             let frameType = decodeUnit.pointee.frameType
                             let frameNumber = decodeUnit.pointee.frameNumber
+                            let presentationTimeMs = decodeUnit.pointee.presentationTimeMs
+                            let receiveTimeMs = decodeUnit.pointee.receiveTimeMs
 
                             // print("Received frame \(frameNumber), type: \(frameType)")
 
@@ -161,7 +165,9 @@ class MoonlightClient {
                                         frameNumber: frameNumber,
                                         frameType: frameType,
                                         fullLength: decodeUnit.pointee.fullLength,
-                                        buffers: bufferList))
+                                        buffers: bufferList,
+                                        presentationTimeMs: presentationTimeMs,
+                                        receiveTimeMs: receiveTimeMs))
                             } else {
                                 print("Invalid frame type")
                             }

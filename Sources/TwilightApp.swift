@@ -5,8 +5,8 @@
 //  Created by Pawel Witkowski on 24/10/2025.
 //
 
-import Foundation
 import AppKit
+import Foundation
 
 @main
 struct TwilightApp {
@@ -36,33 +36,36 @@ struct TwilightApp {
             print("Server info: \(serverInfo)")
             let launchInfo = try await client.launchApp(appId: 881_448_767)
             print("Launch Info: \(launchInfo)")
-            
+
             // Create Metal renderer (must be on main thread)
-            guard let renderer = MetalRenderer(width: 2560, height: 1440, title: "Twilight Stream") else {
+            guard let renderer = Renderer(width: 2560, height: 1440, title: "Twilight Stream")
+            else {
                 print("Failed to create Metal renderer")
                 exit(1)
             }
-            
+
             // Connect decoder to renderer
             Decoder.shared.renderer = renderer
-            
+
             // Start streaming in background
             let moonlightClient = MoonlightClient()
             moonlightClient.startStreaming(launchInfo: launchInfo, serverInfo: serverInfo)
-            
+
             // Capture mouse for gaming (optional - you can also press Cmd+M to toggle)
-            renderer.captureMouse()
-            
+            renderer.captureMouseAndKeyboard()
+
             // Run render loop on main thread
-            print("Streaming started. Press Shift+Ctrl+Option+M to toggle mouse capture, Shift+Ctrl+Option+Q to quit.")
+            print(
+                "Streaming started. Press Shift+Ctrl+Option+M to toggle mouse capture, Shift+Ctrl+Option+Q to quit."
+            )
             while renderer.processEvents() {
                 // Process events continuously
                 // This must be called from the main thread
             }
-            
+
             print("Renderer closed. Exiting.")
             exit(0)
-            
+
         } catch {
             print("Failed to launch app: \(error)")
             exit(1)
