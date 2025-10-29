@@ -10,6 +10,7 @@ import Foundation
 
 @main
 struct TwilightApp {
+    @MainActor
     static func main() async {
         // Resolve client.p12 relative to current working directory for this example
         let cwd = FileManager.default.currentDirectoryPath
@@ -37,30 +38,43 @@ struct TwilightApp {
             let launchInfo = try await client.launchApp(appId: 881_448_767)
             print("Launch Info: \(launchInfo)")
 
-            // Create Metal renderer (must be on main thread)
-            guard let renderer = Renderer(width: 2560, height: 1440, title: "Twilight Stream")
+            // Create window manager and metal renderer (must be on main thread)
+            guard
+                let windowManager = WindowManager(
+                    width: 2560, height: 1440, title: "Twilight Stream")
             else {
-                print("Failed to create Metal renderer")
+                print("Failed to create window manager")
                 exit(1)
             }
 
-            // Connect decoder to renderer
-            Decoder.shared.renderer = renderer
+            guard let metalRenderer = MetalRenderer(width: 2560, height: 1440)
+            else {
+                print("Failed to create metal renderer")
+                exit(1)
+            }
+
+            // Replace the window's metal layer with the renderer's layer
+            if let view = windowManager.window.contentView {
+                view.layer = metalRenderer.metalLayer
+            }
+
+            // Connect decoder to metal renderer
+            Decoder.shared.metalRenderer = metalRenderer
 
             // Start streaming in background
             let moonlightClient = MoonlightClient()
             moonlightClient.startStreaming(launchInfo: launchInfo, serverInfo: serverInfo)
 
             // Capture mouse for gaming (optional - you can also press Cmd+M to toggle)
-            renderer.captureMouseAndKeyboard()
+            windowManager.captureMouseAndKeyboard()
 
             // Run render loop on main thread
             print(
                 "Streaming started. Press Shift+Ctrl+Option+M to toggle mouse capture, Shift+Ctrl+Option+Q to quit."
             )
-            while renderer.processEvents() {
-                // Process events continuously
-                // This must be called from the main thread
+            while windowManager.processEvents() {
+                // Process all queued frames
+                metalRenderer.processFrames()
             }
 
             print("Renderer closed. Exiting.")
