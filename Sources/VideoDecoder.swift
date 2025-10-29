@@ -353,11 +353,6 @@ class Decoder: @unchecked Sendable {
         // Store current decode unit for callback access
         currentDecodeUnit = decodeUnit
 
-        // Get queue depth for logging
-        queueLock.lock()
-        let queueDepth = frameQueue.count
-        queueLock.unlock()
-
         let prepareStart = Date()
 
         // Clear buffers efficiently (keep capacity to avoid reallocation)

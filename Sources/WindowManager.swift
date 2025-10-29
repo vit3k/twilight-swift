@@ -171,6 +171,9 @@ private class MetalView: NSView {
         wantsLayer = true
         metalLayer = CAMetalLayer()
         layer = metalLayer
+
+        // Set scale to match the display's backing scale factor (supports Retina displays)
+        metalLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 1.0
     }
 
     override var acceptsFirstResponder: Bool {

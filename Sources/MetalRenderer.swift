@@ -253,6 +253,13 @@ class MetalRenderer {
         metalLayer.pixelFormat = .bgra8Unorm
         metalLayer.framebufferOnly = true
 
+        // Configure for high-quality rendering
+        metalLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 1.0
+        metalLayer.drawableSize = CGSize(
+            width: CGFloat(width) * metalLayer.contentsScale,
+            height: CGFloat(height) * metalLayer.contentsScale
+        )
+
         // Compile shaders
         do {
             let library = try device.makeLibrary(source: shaderSource, options: nil)
